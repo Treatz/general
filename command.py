@@ -225,13 +225,42 @@ class OverInventory(general.CmdInventory):
             self.caller.msg("You can't do that while unconscious")
 
 class OverSay(general.CmdSay):
+    """
+    speak as your character
+
+    Usage:
+      say <message>
+
+    Talk to those in your current location.
+    """
+
     key = "say"
-    lock = "cmd:all()"
+    aliases = ['"', "'"]
+    locks = "cmd:all()"
+
     def func(self):
-        if(self.caller.db.conscious == 1):
-                super(OverSay, self).func()
-        else:
-            self.caller.msg("You can't do that while unconscious")
+        """Run the say command"""
+
+        caller = self.caller
+
+        if not self.args:
+            caller.msg("Say what?")
+            return
+
+        speech = self.args
+
+        # calling the speech hook on the location
+        speech = caller.location.at_say(caller, speech)
+
+        # Feedback for the object doing the talking.
+        caller.msg('You say, "%s|n"' % speech)
+
+        # Build the string to emit to neighbors.
+        emit_string = '%s says, "%s|n"' % (caller.name, speech)
+        for obj in caller.location.contents:
+            obj.msg("TEST")
+        caller.location.msg_contents(emit_string, exclude=caller, from_obj=caller)
+
 
 class OverGet(general.CmdGet):
     """
