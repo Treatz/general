@@ -1017,36 +1017,46 @@ def skip_attack(caller):
     return text, options
 
 def skip_defend(caller):
-    caller.db.start_time = 99999999999999999999999
-    caller.msg("|/|rYou have been hit by %s.|/" % caller.db.target)
-    if(caller.db.conscious == 0):
-        caller.db.target.msg("|/|r%s is unconscious.|/" % caller)
-    if(caller.db.conscious == 1):
-        caller.db.target.msg("|/|r%s has skipped his turn.|/" % caller)
 
-    if(caller.db.conscious == 0 and caller.db.alive == 1):
-        text = "|/|rYou are unconscious!"
-    if(caller.db.conscious == 1 or caller.db.alive == 0):
-        text = "|/|r You have skipped your turn!"
-    EvMenu(caller.db.target, "typeclasses.menu", startnode="attack_node",auto_quit=False, cmd_on_exit=None)
+	test = caller.db.dexterity + caller.db.athletics
+	soak = caller.db.stamina
+	counter = 0
+	defendpoints = 0
+	while (counter < test):
+		counter = counter + 1
+		roll = roll_dice(1, 10)
+		if (roll >= 6):
+			defendpoints = defendpoints + 1
 
-    if(caller.db.alive == 0):
-        caller.db.conscious = 1
-        caller.msg("|rYou are dead!")
-        caller.db.target.msg("|/|r%s is dead!"% caller)
-        caller.ndb._menutree.close_menu()
-        caller.db.target.ndb._menutree.close_menu()
-	corpse2 = create_object(key="Corpse", location = caller.location)
-	corpse2.db.description = "A bloody mess of flesh and broken bones."
-       	print(caller.location)
+	dmg = damage
+	caller.db.start_time = 99999999999999999999999
+	if (defendpoints > 0):
+		tst = damage2
+		dmg2 = damage
+		cnt2 = 0
+		while (cnt2 < tst):
+			cnt2 = cnt2 + 1
+			roll = roll_dice(1, 10)
+			if (roll >= 6):
+				dmg = dmg + 1
+
+		if(caller.db.target.db.weapon == 0):
+			caller.msg("|/|g%s causes %i points of damage to you." % (caller.db.target, dmg2))
+			caller.db.bashing = caller.db.bashing + dmg2
+			caller.db.target.msg("|/|gYou deal %i points of damage with your punch." % (dmg2))
+
+		if(caller.db.target.db.weapon == 1):
+			caller.msg("|/|g%s causes %i points of lethal damage to you." % (caller.db.target, dmg2))
+			caller.db.lethal = caller.db.lethal + dmg2
+			caller.db.target.msg("|/|gYou deal %i points of lethal damage." % (dmg2))
+			
+
+	EvMenu(caller, "typeclasses.menu", startnode="attack_node", auto_quit=False, cmd_on_exit=None)
 	text = ""
-        options = ()
-
-
-    options = {"key": "_default",
-               "goto": "wait"}
-    return text, options
-
+	options = ({"key": "skip",
+		"goto": "skip_attack"})
+	return text, options
+	
 def defend_node(caller):
 	if((caller.db.lethal == 0 ) and ( caller.db.bashing == 0)):
 		caller.msg(prompt="|X|[wHealth: O O O O O O O")
