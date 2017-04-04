@@ -208,12 +208,42 @@ class FooBar(Command):
                                      settings.PERMISSION_PLAYER_DEFAULT)
 
 class OverLook(default_cmds.CmdLook):
+    """
+    look at location or object
+
+    Usage:
+      look
+      look <obj>
+      look *<player>
+
+    Observes your location or objects in your vicinity.
+    """
     key = "look"
+    aliases = ["l", "ls"]
+    locks = "cmd:all()"
+    arg_regex = r"\s|$"
+
     def func(self):
-        if(self.caller.db.alive == 1 and self.caller.db.conscious == 1):
-            super(OverLook, self).func()
+        """
+        Handle the looking.
+        """
+        if not self.args:
+            target = self.caller.location
+            if not target:
+                self.caller.msg("You have no location to look at!")
+                return
         else:
-            self.caller.msg("You can't see.")
+            target = self.caller.search(self.args)
+            if not target:
+                return
+        if(self.db.alive != target.db.alive):
+        	self.msg("You can't see that.")
+            return
+        if(self.db.conscious == 0):
+        	self.msg("You can't see anything.")
+            return
+        self.msg(self.caller.at_look(target))
+
 
 class OverInventory(general.CmdInventory):
     key = "inventory"
@@ -258,9 +288,8 @@ class OverSay(general.CmdSay):
         # Build the string to emit to neighbors.
         emit_string = '%s says, "%s|n"' % (caller.name, speech)
         for obj in caller.location.contents:
-            obj.msg("TEST")
-        caller.location.msg_contents(emit_string, exclude=caller, from_obj=caller)
-
+        	if(obj.db.alive == caller.db.alive and obj.key != caller.key and obj.db.conscious == 1 and caller.db.conscious == 1):
+            obj.msg(emit_string) 
 
 class OverGet(general.CmdGet):
     """
@@ -297,9 +326,11 @@ class OverGet(general.CmdGet):
             else:
                 caller.msg("You can't get that.")
             return
-
+        if(calller.db.alive != obj.db.alive and caller.db.conscious == 1):
+        	caller.msg("That's not for you.")
+            return
         obj.move_to(caller, quiet=True)
-        caller.msg("(TEST) You pick up %s." % obj.name)
+        caller.msg("You pick up %s." % obj.name)
         caller.location.msg_contents("%s picks up %s." %
                                      (caller.name,
                                       obj.name),
@@ -317,32 +348,138 @@ class OverDrop(general.CmdDrop):
             self.caller.msg("You can't do that while unconscious")
 
 class OverGive(general.CmdGive):
-    key = "give"
-    lock = "cmd:all()"
-    def func(self):
-        if(self.caller.db.conscious == 1):
-                super(OverGive, self).func()
-        else:
-            self.caller.msg("You can't do that while unconscious")
+    """
+    give away something to someone
 
-class OverWhisper(general.CmdGive):
+    Usage:
+      give <inventory obj> = <target>
+
+    Gives an items from your inventory to another character,
+    placing it in their inventory.
+    """
     key = "give"
-    lock = "cmd:all()"
+    locks = "cmd:all()"
+    arg_regex = r"\s|$"
+
     def func(self):
-        if(self.caller.db.conscious == 1):
-                super(OverWhisper, self).func()
-        else:
-            self.caller.msg("You can't do that while unconscious.")
+        """Implement give"""
+
+        caller = self.caller
+        if not self.args or not self.rhs:
+            caller.msg("Usage: give <inventory object> = <target>")
+            return
+        to_give = caller.search(self.lhs, location=caller,
+                                nofound_string="You aren't carrying %s." % self.lhs,
+                                multimatch_string="You carry more than one %s:" % self.lhs)
+        target = caller.search(self.rhs)
+        if not (to_give and target):
+            return
+        if target == caller:
+            caller.msg("You keep %s to yourself." % to_give.key)
+            return
+        if not to_give.location == caller:
+            caller.msg("You are not holding %s." % to_give.key)
+            return
+        # give object
+        if(caller.db.alive != target.db.alive or calller.db.conscious == 0):
+        	caller.msg("You can't give that to them.")
+            return
+            
+        caller.msg("You give %s to %s." % (to_give.key, target.key))
+        to_give.move_to(target, quiet=True)
+        target.msg("%s gives you %s." % (caller.key, to_give.key))
+        
+class OverWhisper(general.CmdGive):
+    """
+    Speak privately as your character to another
+
+    Usage:
+      whisper <player> = <message>
+
+    Talk privately to those in your current location, without
+    others being informed.
+    """
+
+    key = "whisper"
+    locks = "cmd:all()"
+
+    def func(self):
+        """Run the whisper command"""
+
+        caller = self.caller
+
+        if not self.lhs or not self.rhs:
+            caller.msg("Usage: whisper <player> = <message>")
+            return
+
+        receiver = caller.search(self.lhs)
+
+        if not receiver:
+            return
+
+        if caller == receiver:
+            caller.msg("You can't whisper to yourself.")
+            return
+
+        speech = self.rhs
+         
+         if(caller.db.alive != receiver.db.alive or caller.db.conscious == 0):
+         	caller.msg("They can't hear you.")
+             return
+         if(caller.db.conscious == 0 or receiver.db.conscious == 0):
+         	calller.msg("They can't hear you.")
+             return
+        # Feedback for the object doing the talking.
+        caller.msg('You whisper to %s, "%s|n"' % (receiver.key, speech))
+
+        # Build the string to emit to receiver.
+        emit_string = '%s whispers, "%s|n"' % (caller.name, speech)
+        receiver.msg(emit_string, from_obj=caller)
+
 
 class OverPose(general.CmdPose):
-    key = "pose"
-    lock = "cmd:all()"
-    def func(self):
-        if(self.caller.db.conscious == 1):
-                super(OverPose, self).func()
-        else:
-            self.caller.msg("You can't do that while unconscious.")
+    """
+    strike a pose
 
+    Usage:
+      pose <pose text>
+      pose's <pose text>
+
+    Example:
+      pose is standing by the wall, smiling.
+       -> others will see:
+      Tom is standing by the wall, smiling.
+
+    Describe an action being taken. The pose text will
+    automatically begin with your name.
+    """
+    key = "pose"
+    aliases = [":", "emote"]
+    locks = "cmd:all()"
+
+    def parse(self):
+        """
+        Custom parse the cases where the emote
+        starts with some special letter, such
+        as 's, at which we don't want to separate
+        the caller's name and the emote with a
+        space.
+        """
+        args = self.args
+        if args and not args[0] in ["'", ",", ":"]:
+            args = " %s" % args.strip()
+        self.args = args
+
+    def func(self):
+        """Hook function"""
+        if not self.args:
+            msg = "What do you want to do?"
+            self.caller.msg(msg)
+        else:
+        	msg = "%s%s" % (self.caller.name, self.args)
+        	for obj in self.caller.location.contents:
+        	    if(obj.db.alive == self.caller.db.alive and obj.db.conscious == 1 and self.caller.db.conscious == 1):
+                    obj.msg(msg) 
 
 class Kill(MuxCommand):
     key = "kill"
